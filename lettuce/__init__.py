@@ -67,6 +67,7 @@ __all__ = [
     'STEP_REGISTRY',
     'CALLBACK_REGISTRY',
     'call_hook',
+    'mark'
 ]
 
 try:
@@ -177,7 +178,10 @@ class Runner(object):
         failed = False
         try:
             for filename in features_files:
-                feature = Feature.from_file(filename)
+                if filename.endswith('.py'):
+                    feature = Feature.from_py_file(filename)
+                else:
+                    feature = Feature.from_file(filename)
                 results.append(
                     feature.run(self.scenarios,
                                 tags=self.tags,
@@ -211,3 +215,20 @@ class Runner(object):
                 raise LettuceRunnerError("Test failed.")
 
             return total
+
+
+class Mark(object):
+    def __getattr__(self, name):
+        if hasattr(self, name):
+            raise Exception("should get here for attr '%s'" % name)
+
+        def wrapper(func):
+            if not hasattr(func, 'lettuce_tags'):
+                func.lettuce_tags = []
+            func.lettuce_tags.append(name)
+            return func
+
+        return wrapper
+
+
+mark = Mark()

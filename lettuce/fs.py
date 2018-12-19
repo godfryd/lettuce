@@ -69,6 +69,8 @@ class FeatureLoader(object):
 
     def find_feature_files(self):
         paths = FileSystem.locate(self.base_dir, "*.feature")
+        paths2 = FileSystem.locate(self.base_dir, "*.py")
+        paths.extend(paths2)
         paths.sort()
         return paths
 
@@ -262,6 +264,6 @@ class FileSystem(object):
 
                 finally:
                     cls.popd()
-                
+
             return inner
         return decorator

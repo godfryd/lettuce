@@ -49,8 +49,8 @@ def wp(l):
     if l.startswith("\033[1;30m"):
         l = l.replace(" |", "\033[1;37m |\033[1;30m")
     if l.startswith("\033[1;31m"):
-        l = l.replace(" |", "\033[1;37m |\033[0;31m")  
-  
+        l = l.replace(" |", "\033[1;37m |\033[0;31m")
+
     return l
 
 
@@ -148,7 +148,7 @@ def print_scenario_running(scenario):
             return
     string = scenario.represented()
     string = wrap_file_and_line(string, '\033[1;30m', '\033[0m')
-    write_out("\n\033[1;37m%s" % string)
+    write_out("\n\033[1;37m%s\033[0m" % string)
 
 
 @after.outline

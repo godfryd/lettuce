@@ -24,6 +24,7 @@ from copy import deepcopy
 from fuzzywuzzy import fuzz
 from itertools import chain
 from random import shuffle
+from functools import partial
 
 from lettuce import strings
 from lettuce import languages
@@ -332,7 +333,7 @@ class Step(object):
 
         if self.defined_at:
             where = self.defined_at
-        return strings.rfill(head, self.parent.feature.max_length + 1, append=u'# %s:%d\n' % (where.file, where.line))
+        return strings.rfill(head, self.parent.feature.max_length + 1, append=u'# %s:%s\n' % (where.file, where.line))
 
     def represent_hashes(self):
         lines = strings.dicts_to_string(self.hashes, self.keys).splitlines()
@@ -572,7 +573,7 @@ class Scenario(object):
 
         self.feature = None
         if not language:
-            language = language()
+            language = Language()
 
         self.name = name
         self.language = language
@@ -654,12 +655,8 @@ class Scenario(object):
 
         matched = []
 
-        if isinstance(self.tags, list):
-            for tag in self.tags:
-                if tag in tags:
-                    return True
-        else:
-            self.tags = []
+        if not isinstance(self.tags, list):
+            raise Exception("wrong tags %s" % str(self.tags))
 
         for tag in tags:
             exclude = tag.startswith('-')
@@ -819,7 +816,7 @@ class Scenario(object):
         appendix = ''
         if self.described_at:
             fmt = (self.described_at.file, self.described_at.line)
-            appendix = u'# %s:%d\n' % fmt
+            appendix = u'# %s:%s\n' % fmt
 
         max_length = self.max_length
         if self.feature:
@@ -952,7 +949,7 @@ class Feature(object):
                  language=None):
 
         if not language:
-            language = language()
+            language = Language()
 
         self.name = name
         self.language = language
@@ -1048,7 +1045,7 @@ class Feature(object):
         filename = self.described_at.file
         line = self.described_at.line
         head = strings.rfill(self.get_head(), length,
-                             append=u"# %s:%d\n" % (filename, line))
+                             append=u"# %s:%s\n" % (filename, line))
         for description, line in zip(self.description.splitlines(),
                                      self.described_at.description_at):
             head += strings.rfill(
@@ -1100,6 +1097,61 @@ class Feature(object):
         f.close()
         language = Language.guess_from_string(string)
         feature = new_feature.from_string(string, with_file=filename, language=language)
+        return feature
+
+    @classmethod
+    def from_py_file(new_feature, filename):
+        import imp
+        import inspect
+        mod_name = filename.replace('.py', '').split('/')[-1]
+        mod = imp.load_source(mod_name, filename)
+
+        feature = new_feature(name=mod.__doc__,
+                              remaining_lines='feat lines',
+                              with_file=mod.__file__,
+                              original_string='string',
+                              language=None)
+
+        # remember order of test functions
+        funcs = []
+        with open(filename) as f:
+            for line in f:
+                if line.startswith('def test_'):
+                    func = line.split(' ')[1].split('(')[0]
+                    funcs.append(func)
+
+        # load scenarios
+        scenarios = {}
+        for f in dir(mod):
+            f = getattr(mod, f)
+            if not inspect.isfunction(f):
+                continue
+
+            tags = []
+            if hasattr(f, 'lettuce_tags'):
+                tags = f.lettuce_tags
+
+            scen = Scenario(name=f.__doc__,
+                            remaining_lines=['scen lines'],
+                            keys='keys',
+                            outlines=[],
+                            with_file=mod.__file__,
+                            original_string='original_string',
+                            language=None,
+                            tags=tags)
+            scen.background = None
+
+            step = scen.steps[0]
+            def pre_run(fn, ignore_case, with_outline=None):
+                sd = StepDefinition(step, fn)
+                return re.search('', ''), sd
+            step.pre_run = partial(pre_run, f)
+
+            scenarios[f.__name__] = scen
+
+        feature.scenarios = [scenarios[n] for n in funcs]
+        feature._add_myself_to_scenarios()
+
         return feature
 
     def _set_definition(self, definition):
@@ -1222,11 +1274,13 @@ class Feature(object):
             if all(map(lambda x: isinstance(x, int), scenarios)):
                 scenario_nums_to_run = scenarios
 
-        def should_run_scenario(num, scenario):
-            return scenario.matches_tags(tags) and \
-                   (scenario_nums_to_run is None or num in scenario_nums_to_run)
-        scenarios_to_run = [scenario for num, scenario in enumerate(self.scenarios, start=1)
-                                     if should_run_scenario(num, scenario)]
+        scenarios_to_run = []
+        for num, scenario in enumerate(self.scenarios, start=1):
+            if scenario_nums_to_run is None or num in scenario_nums_to_run:
+                if scenario.matches_tags(tags):
+                    scenarios_to_run.append(scenario)
+
+
         # If no scenarios in this feature will run, don't run the feature hooks.
         if not scenarios_to_run:
             return FeatureResult(self)
