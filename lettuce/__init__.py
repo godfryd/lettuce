@@ -22,6 +22,7 @@ release = 'kryptonite'
 import os
 import sys
 import traceback
+import warnings
 try:
     from imp import reload
 except ImportError:
@@ -125,11 +126,17 @@ class Runner(object):
             from lettuce.plugins import dots as output
         elif verbosity is 2:
             from lettuce.plugins import scenario_names as output
-        elif verbosity is 3:
-            if no_color:
-                from lettuce.plugins import shell_output as output
-            else:
+        else:
+            if verbosity is 4:
                 from lettuce.plugins import colored_shell_output as output
+                msg = ('Deprecated in lettuce 2.2.21. Use verbosity 3 without '
+                       '--no-color flag instead of verbosity 4')
+                warnings.warn(msg, DeprecationWarning)
+            elif verbosity is 3:
+                if no_color:
+                    from lettuce.plugins import shell_output as output
+                else:
+                    from lettuce.plugins import colored_shell_output as output
 
         self.random = random
 
